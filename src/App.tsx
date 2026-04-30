@@ -1,33 +1,44 @@
-import { useEffect, useState } from "react";
-import { getUser, getUsers } from "./services/api";
+import { useEffect, useMemo, useState } from "react";
+import { getUsers, type User } from "./services/api";
 import { UserCard } from "./components/user-card";
 import { useDebounce } from "./hooks/debounce";
 
 function App() {
-  const [users, setUsers] = useState([]);
+  const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
+  const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState("default");
 
   const debouncedQuery = useDebounce({ value: query });
 
+  const visibleUsers = useMemo(() => {
+    const q = debouncedQuery.toLowerCase().trim()
+  
+    const filtered = users.filter(user =>
+      user.name.toLowerCase().includes(q) ||
+      user.email.toLowerCase().includes(q)
+    )
+  
+    return [...filtered].sort((a, b) => {
+      if (sort === "asc") return a.name.localeCompare(b.name)
+      if (sort === "desc") return b.name.localeCompare(a.name)
+      return a.id - b.id
+    })
+  }, [users, debouncedQuery, sort])
+
   useEffect(() => {
     let ignore = false;
     setLoading(true);
     try {
-      if (!ignore) {
-        if (!debouncedQuery) {
-          void getUsers().then((data) => {
-            setUsers(data);
-          });
-        } else {
-          void getUser(debouncedQuery).then((data) => {
-            setUsers(data);
-          });
+      const getUsersFunc = async () => {
+        const data = await getUsers();
+        if (!ignore) {
+          setUsers(data);
         }
-      }
-    } catch (error: any) {
+      };
+      void getUsersFunc();
+    } catch (error: unknown) {
       setError(error);
     } finally {
       setLoading(false);
@@ -37,17 +48,6 @@ function App() {
       ignore = true;
     };
   }, [debouncedQuery]);
-
-  const handleSort = (sortQ: string) => {
-    setSort(sortQ);
-    if (sortQ === "asc") {
-      setUsers(users.sort((a: any, b: any) => a.name.localeCompare(b.name)));
-    } else if (sortQ === "desc") {
-      setUsers(users.sort((a: any, b: any) => b.name.localeCompare(a.name)));
-    } else {
-      setUsers(users.sort((a: any, b: any) => a.id - b.id));
-    }
-  };
 
   if (error) {
     return <div>Error: {error}</div>;
@@ -72,18 +72,16 @@ function App() {
           name="sort"
           id="sort-name"
           value={sort}
-          onChange={(e) => handleSort(e.target.value)}
+          onChange={(e) => setSort(e.target.value)}
         >
-          <option value="default" selected>
-            Default
-          </option>
+          <option value="default">Default</option>
           <option value="asc">Ascending</option>
           <option value="desc">Descending</option>
         </select>
       </div>
       {loading && <p className="mt-3">loading...</p>}
       <div className="flex flex-wrap gap-3 mt-3">
-        {users.map((user: any) => (
+        {visibleUsers.map((user: User) => (
           // <pre>{JSON.stringify(user, null, 2)}</pre>
           <UserCard key={user.id} user={user} />
         ))}
